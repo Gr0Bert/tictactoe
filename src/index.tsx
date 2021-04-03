@@ -37,9 +37,8 @@ type SquareProps = {
 }
 
 const mapStateToPropsSquare = (state: GameState, ownProps: SquareProps) => {
-    const stateOrInitial = state ? state : InitialGameState
-    const step = stateOrInitial.stepNumber
-    const newValue = stateOrInitial.history[step].squares[ownProps.index]
+    const step = state.stepNumber
+    const newValue = state.history[step].squares[ownProps.index]
     return {
         index: ownProps.index,
         value: newValue
@@ -198,7 +197,6 @@ const gameReducer: Reducer<GameState, GameEvent> = (state: GameState | undefined
             } else {
                 stateCopy[action.squareIndex] = stateOrInitial.xIsNext ? "X" : "O"
                 historyCopy.unshift({squares: stateCopy})
-                console.log(historyCopy)
                 return {
                     history: historyCopy,
                     xIsNext: !stateOrInitial.xIsNext,
