@@ -1,4 +1,4 @@
-import React, {Dispatch} from 'react';
+import React from 'react';
 import ReactDOM from 'react-dom';
 import {Action, Reducer, createStore} from 'redux';
 import './index.css';
@@ -36,7 +36,7 @@ type SquareProps = {
     value: string
 }
 
-const mapStateToPropsSquare = (state: GameState | undefined, ownProps: SquareProps) => {
+const mapStateToPropsSquare = (state: GameState, ownProps: SquareProps) => {
     const stateOrInitial = state ? state : InitialGameState
     const step = stateOrInitial.stepNumber
     const newValue = stateOrInitial.history[step].squares[ownProps.index]
@@ -187,7 +187,7 @@ const GameConnected = gameComponentConnector(Game)
 
 // ========================================
 
-const gameReducer: Reducer<GameState, GameEvent> = (state: GameState | undefined, action: SquareClicked | StepClicked): GameState => {
+const gameReducer: Reducer<GameState, GameEvent> = (state: GameState | undefined, action: GameEvent): GameState => {
     const stateOrInitial = state ? state : InitialGameState
     switch (action.type) {
         case ActionType.SQUARE_CLICKED:
@@ -212,6 +212,8 @@ const gameReducer: Reducer<GameState, GameEvent> = (state: GameState | undefined
                 stepNumber: action.stepNumber,
                 xIsNext: (stateOrInitial.history.length - action.stepNumber) % 2 !== 0
             }
+
+        default: return InitialGameState
     }
 }
 
