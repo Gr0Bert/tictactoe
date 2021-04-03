@@ -1,30 +1,81 @@
-import React from 'react';
+import React, {Dispatch} from 'react';
 import ReactDOM from 'react-dom';
+import {Action, Reducer, createStore} from 'redux';
 import './index.css';
+import {connect, ConnectedProps, Provider} from "react-redux";
+
+enum ActionType {
+    SQUARE_CLICKED = "SQUARE_CLICKED",
+    STEP_CLICKED = "STEP_CLICKED"
+}
+
+interface SquareClicked extends Action<ActionType.SQUARE_CLICKED> {
+    type: ActionType.SQUARE_CLICKED
+    squareIndex: number
+}
+
+interface StepClicked extends Action<ActionType.STEP_CLICKED> {
+    type: ActionType.STEP_CLICKED
+    stepNumber: number
+}
+
+type GameEvent = SquareClicked | StepClicked
+
+const InitialGameState = {
+    history: [
+        {
+            squares: Array(9).fill("")
+        }
+    ],
+    xIsNext: true,
+    stepNumber: 0
+}
 
 type SquareProps = {
-    value: string,
-    onClick: () => void
+    index: number
+    value: string
 }
 
-const Square: (props: SquareProps) => JSX.Element = (props: SquareProps) => {
-    return (
-        <button className="square" onClick={props.onClick}>
-            { props.value }
-        </button>
-    );
+const mapStateToPropsSquare = (state: GameState | undefined, ownProps: SquareProps) => {
+    const stateOrInitial = state ? state : InitialGameState
+    const step = stateOrInitial.stepNumber
+    const newValue = stateOrInitial.history[step].squares[ownProps.index]
+    return {
+        index: ownProps.index,
+        value: newValue
+    } as SquareProps
 }
 
-type BoardProps = {
-    squares: Array<string>,
-    onClick: (i: number) => void
+const squareToggled = (i: number) => {
+    return {
+        type: ActionType.SQUARE_CLICKED,
+        squareIndex: i
+    } as SquareClicked
 }
 
-type BoardState = {}
+const mapDispatchToPropsSquare = {
+        squareToggledAction: squareToggled
+    }
 
-class Board extends React.Component<BoardProps, BoardState> {
-    renderSquare(i: number) {
-        return <Square value={this.props.squares[i]} onClick={() => this.props.onClick(i)}/>;
+const squareComponentConnector = connect(mapStateToPropsSquare, mapDispatchToPropsSquare);
+
+type SquareComponentType = ConnectedProps<typeof squareComponentConnector>
+
+class Square extends React.Component<SquareComponentType, {}> {
+    render() {
+        return (
+            <button className="square" onClick={ () => this.props.squareToggledAction(this.props.index) }>
+                { this.props.value }
+            </button>
+        );
+    }
+}
+
+const SquareConnected = squareComponentConnector(Square)
+
+class Board extends React.Component<{}, {}> {
+    renderSquare(index: number) {
+        return <SquareConnected index={index} value={""} />;
     }
 
     render() {
@@ -46,90 +97,74 @@ class Board extends React.Component<BoardProps, BoardState> {
                     {this.renderSquare(8)}
                 </div>
             </div>
-        );
+        )
     }
 }
 
+const BoardConnected = connect()(Board)
+
 type Field = {squares: Array<string>}
+
 type GameState = {
     history: Array<Field>,
     xIsNext: boolean,
     stepNumber: number
 }
-type GameProps = {x: boolean}
 
-class Game extends React.Component<GameProps, GameState> {
-    constructor(props: GameProps) {
-        super(props)
-        this.state = {
-            history: [
-                {
-                    squares: Array(9).fill("")
-                }
-            ],
-            xIsNext: true,
-            stepNumber: 0
+type GameProps = GameState
+
+const calculateWinner = (squares: string[]): string | null => {
+    const lines = [
+        [0, 1, 2],
+        [3, 4, 5],
+        [6, 7, 8],
+        [0, 3, 6],
+        [1, 4, 7],
+        [2, 5, 8],
+        [0, 4, 8],
+        [2, 4, 6],
+    ];
+    for (let i = 0; i < lines.length; i++) {
+        const [a, b, c] = lines[i];
+        if (squares[a] && squares[a] === squares[b] && squares[a] === squares[c]) {
+            return squares[a];
         }
     }
+    return null;
+}
 
-    squareValue() {
-        return this.state.xIsNext ? "X" : "O"
-    }
+const mapStateToPropsGame = (state: GameState, ownProps: GameProps) => {
+    return state
+}
 
-    handleSquareClick(i: number): void {
-        console.log(this.state.stepNumber)
-        const historyCopy = this.state.history.slice(this.state.stepNumber)
-        const stateCopy: string[] = historyCopy[0].squares.slice()
-        if (this.calculateWinner(stateCopy) || stateCopy[i] !== "") {
-            return
-        } else {
-            stateCopy[i] = this.squareValue()
-            historyCopy.unshift({squares: stateCopy})
-            console.log(historyCopy)
-            this.setState({history: historyCopy, xIsNext: !this.state.xIsNext, stepNumber: 0})
-        }
-    }
+const jumpTo = (stepNumber: number) => {
+    return {
+        type: ActionType.STEP_CLICKED,
+        stepNumber: stepNumber
+    } as StepClicked
+}
 
-    calculateWinner(squares: string[]): string | null {
-        const lines = [
-            [0, 1, 2],
-            [3, 4, 5],
-            [6, 7, 8],
-            [0, 3, 6],
-            [1, 4, 7],
-            [2, 5, 8],
-            [0, 4, 8],
-            [2, 4, 6],
-        ];
-        for (let i = 0; i < lines.length; i++) {
-            const [a, b, c] = lines[i];
-            if (squares[a] && squares[a] === squares[b] && squares[a] === squares[c]) {
-                return squares[a];
-            }
-        }
-        return null;
-    }
+const mapDispatchToPropsGame = {
+    jumpToAction: jumpTo
+}
 
-    jumpTo(step: number) {
-        this.setState(
-            {
-                stepNumber: step,
-                xIsNext: (this.state.history.length - step) % 2 !== 0
-            }
-        )
-    }
+const gameComponentConnector = connect(mapStateToPropsGame, mapDispatchToPropsGame);
 
+type GameComponentType = ConnectedProps<typeof gameComponentConnector>
+
+class Game extends React.Component<GameComponentType, {}> {
     render() {
-        const currentField = this.state.history[this.state.stepNumber]
-        const winner = this.calculateWinner(currentField.squares)
-        const status = winner ? `Winner is ${winner}` : `Next player: ${this.squareValue()}`
+        const currentField = this.props.history[this.props.stepNumber]
+        const winner = calculateWinner(currentField.squares)
+        const status = winner ? `Winner is ${winner}` : `Next player: ${this.props.xIsNext ? "X" : "O"}`
 
-        const moves = this.state.history.slice().reverse().map((step, move) => {
+        const moves = this.props.history.slice().reverse().map((step, move) => {
             const desc = move ? 'Go to move #' + move : 'Go to game start'
-            const historyLength = this.state.history.length
+            const historyLength = this.props.history.length
+            const jumpStep = historyLength - 1 - move
             return (
                 <li key={move}>
-                    <button onClick={() => this.jumpTo((historyLength - 1) - move)}>{desc}</button>
+                    <button onClick={() => this.props.jumpToAction(jumpStep)}>{desc}</button>
                 </li>
             )
         })
@@ -137,7 +172,7 @@ class Game extends React.Component<GameProps, GameState> {
         return (
             <div className="game">
                 <div className="game-board">
-                    <Board onClick={(i: number) => this.handleSquareClick(i)} squares={currentField.squares} />
+                    <BoardConnected />
                 </div>
                 <div className="game-info">
                     <div>{status}</div>
@@ -148,9 +183,51 @@ class Game extends React.Component<GameProps, GameState> {
     }
 }
 
+const GameConnected = gameComponentConnector(Game)
+
 // ========================================
 
+const gameReducer: Reducer<GameState, GameEvent> = (state: GameState | undefined, action: SquareClicked | StepClicked): GameState => {
+    const stateOrInitial = state ? state : InitialGameState
+    switch (action.type) {
+        case ActionType.SQUARE_CLICKED:
+            const historyCopy = stateOrInitial.history.slice(stateOrInitial.stepNumber)
+            const stateCopy: string[] = historyCopy[0].squares.slice()
+            if (calculateWinner(stateCopy) || stateCopy[action.squareIndex] !== "") {
+                return stateOrInitial
+            } else {
+                stateCopy[action.squareIndex] = stateOrInitial.xIsNext ? "X" : "O"
+                historyCopy.unshift({squares: stateCopy})
+                console.log(historyCopy)
+                return {
+                    history: historyCopy,
+                    xIsNext: !stateOrInitial.xIsNext,
+                    stepNumber: 0
+                }
+            }
+
+        case ActionType.STEP_CLICKED:
+            return {
+                ...stateOrInitial,
+                stepNumber: action.stepNumber,
+                xIsNext: (stateOrInitial.history.length - action.stepNumber) % 2 !== 0
+            }
+    }
+}
+
+const store: any = createStore<GameState, GameEvent, any, any>(
+    gameReducer,
+    InitialGameState,
+    (window as any).__REDUX_DEVTOOLS_EXTENSION__ && (window as any).__REDUX_DEVTOOLS_EXTENSION__()
+)
+
 ReactDOM.render(
-    <Game x={true}/>,
+    <Provider store={store}>
+        <GameConnected
+            history={InitialGameState.history}
+            stepNumber={InitialGameState.stepNumber}
+            xIsNext={InitialGameState.xIsNext}
+        />
+    </Provider>,
     document.getElementById('root')
 );
