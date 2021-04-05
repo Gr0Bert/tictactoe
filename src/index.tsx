@@ -1,89 +1,100 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
-import {Action, Reducer, createStore} from 'redux';
+import {createStore, Reducer} from 'redux';
 import './index.css';
-import {connect, Provider, useDispatch, useSelector} from "react-redux";
+import {Provider, useDispatch, useSelector} from "react-redux";
 
-enum ActionType {
-    SQUARE_CLICKED = "SQUARE_CLICKED",
-    STEP_CLICKED = "STEP_CLICKED"
+interface GameAction<S> {
+    type: "GAME_ACTION"
+    changeState: ChangeState<S>
 }
 
-interface SquareClicked extends Action<ActionType.SQUARE_CLICKED> {
-    type: ActionType.SQUARE_CLICKED
-    squareIndex: number
-}
+type ChangeState<S> = (state: S) => S
 
-interface StepClicked extends Action<ActionType.STEP_CLICKED> {
-    type: ActionType.STEP_CLICKED
-    stepNumber: number
-}
-
-type GameAction = SquareClicked | StepClicked
-
-type SquareState = {
-    index: number
-    value: string
-}
+type SquareState = {value: string, isXNext: boolean}
 
 type SquareProps = {
-    index: number
+    value: string
+    dispatcher: GameDispatcher<SquareState>
 }
 
-const mapGameStateToSquareState = (state: GameState, index: number) => {
-    const step = state.stepNumber
-    const newValue = state.history[step].squares[index]
-    return {
-        index: index,
-        value: newValue
-    } as SquareState
+const squareToggled = (): ChangeState<SquareState> => {
+    return (state) => {
+        return {
+            value: state.isXNext ? "X" : "O",
+            isXNext: !state.isXNext
+        }
+    }
 }
 
-const squareToggled = (i: number) => {
-    return {
-        type: ActionType.SQUARE_CLICKED,
-        squareIndex: i
-    } as SquareClicked
-}
-
-function Square({index}: SquareProps) {
-    const state = useSelector<GameState, SquareState>(state => mapGameStateToSquareState(state, index))
-    const dispatch = useDispatch()
-
+function Square({value, dispatcher}: SquareProps) {
     return (
-        <button className="square" onClick={ () => dispatch(squareToggled(index))}>
-            { state.value }
+        <button className="square" onClick={ () => dispatcher.dispatch(squareToggled())}>
+            { value }
         </button>
     );
 }
 
-function Board() {
-    function renderSquare(i: number) {
-        return <Square index={i} />;
+
+type BoardProps = {
+    board: Field,
+    dispatcher: GameDispatcher<GameState>
+}
+
+function Board({board, dispatcher}: BoardProps) {
+    function squareDispatcher(index: number): GameDispatcher<SquareState> {
+        return fromParentDispatcher<GameState, SquareState>(
+            dispatcher,
+            (arg0) => {
+                return {
+                    value: arg0.history[0].squares[index],
+                    isXNext: arg0.xIsNext
+                }
+            },
+            (arg0, arg1) => {
+                const historyCopy = arg0.history.slice(arg0.stepNumber)
+                const boardCopy: string[] = historyCopy[0].squares.slice()
+                if (calculateWinner(boardCopy) || boardCopy[index] !== "") {
+                    return arg0
+                } else {
+                    boardCopy[index] = arg1.value
+                    historyCopy.unshift({squares: boardCopy})
+                    return {
+                        ...arg0,
+                        history: historyCopy,
+                        xIsNext: arg1.isXNext,
+                        stepNumber: 0
+                    }
+                }
+            }
+        )
+    }
+
+
+    function renderSquare(i: number, value: string) {
+        return <Square value={value} dispatcher={squareDispatcher(i)} />;
     }
 
     return (
         <div>
             <div className="board-row">
-                {renderSquare(0)}
-                {renderSquare(1)}
-                {renderSquare(2)}
+                {renderSquare(0, board.squares[0])}
+                {renderSquare(1, board.squares[1])}
+                {renderSquare(2, board.squares[2])}
             </div>
             <div className="board-row">
-                {renderSquare(3)}
-                {renderSquare(4)}
-                {renderSquare(5)}
+                {renderSquare(3, board.squares[3])}
+                {renderSquare(4, board.squares[4])}
+                {renderSquare(5, board.squares[5])}
             </div>
             <div className="board-row">
-                {renderSquare(6)}
-                {renderSquare(7)}
-                {renderSquare(8)}
+                {renderSquare(6, board.squares[6])}
+                {renderSquare(7, board.squares[7])}
+                {renderSquare(8, board.squares[8])}
             </div>
         </div>
     )
 }
-
-const BoardConnected = connect()(Board)
 
 type Field = {squares: Array<string>}
 
@@ -113,16 +124,24 @@ const calculateWinner = (squares: string[]): string | null => {
     return null;
 }
 
-const jumpTo = (stepNumber: number): StepClicked => {
-    return {
-        type: ActionType.STEP_CLICKED,
-        stepNumber: stepNumber
-    } as StepClicked
+const jumpTo = (stepNumber: number): ChangeState<GameState> => {
+    return (state: GameState) => {
+        return {
+            ...state,
+            stepNumber: stepNumber,
+            xIsNext: (state.history.length - stepNumber) % 2 !== 0
+        }
+    }
 }
 
-function Game() {
-    const state = useSelector<GameState, GameState>(state => state)
-    const dispatch = useDispatch()
+type GameProps = {
+    state: GameState
+    dispatcher: GameDispatcher<GameState>
+}
+
+function Game(props: GameProps) {
+    const state = props.state
+    const boardDispatcher = props.dispatcher
 
     const currentField = state.history[state.stepNumber]
     const winner = calculateWinner(currentField.squares)
@@ -134,7 +153,7 @@ function Game() {
         const jumpStep = historyLength - 1 - move
         return (
             <li key={move}>
-                <button onClick={() => dispatch(jumpTo(jumpStep))}>{desc}</button>
+                <button onClick={() => props.dispatcher.dispatch(jumpTo(jumpStep))}>{desc}</button>
             </li>
         )
     })
@@ -142,7 +161,7 @@ function Game() {
     return (
         <div className="game">
             <div className="game-board">
-                <BoardConnected />
+                <Board board={currentField} dispatcher={boardDispatcher} />
             </div>
             <div className="game-info">
                 <div>{status}</div>
@@ -152,6 +171,30 @@ function Game() {
     );
 }
 
+// ideally should be a method on GameDispatcher
+function fromParentDispatcher<S, S1>(parentDispatcher: GameDispatcher<S>, get: (arg0: S) => S1, set: (arg0: S, arg1: S1) => S): GameDispatcher<S1> {
+    const next = {} as GameDispatcher<S1>
+    next.dispatch = (modify: (arg0: S1) => S1): void => {
+        const newDispatch =  (state: S) => set(state, modify(get(state)))
+        parentDispatcher.dispatch(newDispatch)
+    }
+    return next
+}
+
+interface GameDispatcher<S> {
+    dispatch(modify: ChangeState<S>): void
+}
+
+function makeRootDispatcher<S>(reduxDispatcher: (arg0: any) => void): GameDispatcher<S> {
+    const root = {} as GameDispatcher<S>
+    root.dispatch = (modify: (arg0: S) => S): void => {
+        reduxDispatcher({
+            type: "GAME_ACTION",
+            changeState: (state: S) => modify(state)
+        })
+    }
+    return root
+}
 
 const InitialGameState = {
     history: [
@@ -164,44 +207,52 @@ const InitialGameState = {
 }
 // ========================================
 
-const gameReducer: Reducer<GameState, GameAction> = (state: GameState | undefined, action: GameAction): GameState => {
-    const stateOrInitial = state ? state : InitialGameState
+const gameStates = Array(5).fill(InitialGameState)
+
+const gameReducer: Reducer<Array<GameState>, GameAction<Array<GameState>>> = (state: Array<GameState> | undefined, action: GameAction<Array<GameState>>): Array<GameState> => {
+    const stateOrInitial = state ? state : gameStates
     switch (action.type) {
-        case ActionType.SQUARE_CLICKED:
-            const historyCopy = stateOrInitial.history.slice(stateOrInitial.stepNumber)
-            const stateCopy: string[] = historyCopy[0].squares.slice()
-            if (calculateWinner(stateCopy) || stateCopy[action.squareIndex] !== "") {
-                return stateOrInitial
-            } else {
-                stateCopy[action.squareIndex] = stateOrInitial.xIsNext ? "X" : "O"
-                historyCopy.unshift({squares: stateCopy})
-                return {
-                    history: historyCopy,
-                    xIsNext: !stateOrInitial.xIsNext,
-                    stepNumber: 0
-                }
-            }
+        case "GAME_ACTION": return action.changeState(stateOrInitial)
 
-        case ActionType.STEP_CLICKED:
-            return {
-                ...stateOrInitial,
-                stepNumber: action.stepNumber,
-                xIsNext: (stateOrInitial.history.length - action.stepNumber) % 2 !== 0
-            }
-
-        default: return InitialGameState
+        default: return gameStates
     }
 }
 
-const store: any = createStore<GameState, GameAction, any, any>(
+const store: any = createStore<Array<GameState>, GameAction<Array<GameState>>, any, any>(
     gameReducer,
-    InitialGameState,
     (window as any).__REDUX_DEVTOOLS_EXTENSION__ && (window as any).__REDUX_DEVTOOLS_EXTENSION__()
 )
 
+
+const Root = () => {
+    const reduxDispatcher = useDispatch()
+    const state: Array<GameState> = useSelector<Array<GameState>, Array<GameState>>(state => state)
+    const rootDispatcher = makeRootDispatcher<Array<GameState>>(reduxDispatcher)
+    const games = state.map((gameState, gameIndex) => {
+        const gameDispatcher = makeGameDispatcher(rootDispatcher, gameIndex)
+        return <Game state={gameState} dispatcher={gameDispatcher}/>
+    })
+    return (
+        <div>
+            {games}
+        </div>)
+}
+
+const makeGameDispatcher = (rootDispatcher: GameDispatcher<Array<GameState>>, gameIndex: number) => {
+    return fromParentDispatcher<Array<GameState>, GameState>(
+        rootDispatcher,
+        (arg0) => { return arg0[gameIndex] },
+            (arg0, arg1) => {
+                const stateCopy = arg0.slice()
+                stateCopy[gameIndex] = arg1
+                return stateCopy
+            }
+        )
+}
+
 ReactDOM.render(
     <Provider store={store}>
-        <Game />
+        <Root />
     </Provider>,
     document.getElementById('root')
 );
